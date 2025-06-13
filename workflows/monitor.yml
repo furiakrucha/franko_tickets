@@ -2,7 +2,7 @@ name: Monitor Tickets
 
 on:
   schedule:
-    - cron: "*/2 * * * *"
+    - cron: "*/1 * * * *"
   workflow_dispatch:
 
 jobs:
