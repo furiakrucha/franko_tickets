@@ -1,12 +1,11 @@
-
-import requests
 import os
-import re
+import requests
 from bs4 import BeautifulSoup
-import time
 
-# Вистави для моніторингу
-TARGET_SHOWS = [
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+TELEGRAM_USER_ID = os.getenv('TELEGRAM_USER_ID')
+
+SHOWS_TO_MONITOR = [
     "Буна",
     "Лимерівна",
     "Кассандра",
@@ -17,47 +16,68 @@ TARGET_SHOWS = [
     "Гедда Габлер"
 ]
 
-# Телеграм
-TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
-TELEGRAM_USER_ID = os.environ["TELEGRAM_USER_ID"]
-TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+URLS = {
+    "franko": "https://teatrfrankoa.com.ua/afisha/",
+    "podol": "https://podoltheatre.kiev.ua/afisha/"
+}
 
-def send_telegram(message):
-    data = {"chat_id": TELEGRAM_USER_ID, "text": message}
-    requests.post(TELEGRAM_API_URL, data=data)
+def send_telegram_message(text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    data = {
+        "chat_id": TELEGRAM_USER_ID,
+        "text": text,
+        "parse_mode": "HTML"
+    }
+    try:
+        response = requests.post(url, data=data)
+        if response.status_code != 200:
+            print(f"Failed to send message: {response.text}")
+    except Exception as e:
+        print(f"Exception sending message: {e}")
 
 def check_franko():
-    url = "https://sales.ft.org.ua/"
-    r = requests.get(url, timeout=10)
-    soup = BeautifulSoup(r.text, "html.parser")
-    page_text = soup.get_text()
-    found = []
-    for show in TARGET_SHOWS:
-        if show.lower() in page_text.lower():
-            found.append(show)
-    return found
+    try:
+        r = requests.get(URLS["franko"])
+        soup = BeautifulSoup(r.text, "html.parser")
+        shows = soup.find_all("div", class_="event-item__title")
+        found = []
+        for show in shows:
+            title = show.text.strip()
+            for s in SHOWS_TO_MONITOR[:-1]:  # всі окрім Гедди Габлер
+                if s.lower() in title.lower():
+                    found.append(title)
+        return found
+    except Exception as e:
+        print(f"Error checking Franko theatre: {e}")
+        return []
 
-def check_podil():
-    url = "https://teatrpodol.com/afisha/"
-    r = requests.get(url, timeout=10)
-    soup = BeautifulSoup(r.text, "html.parser")
-    page_text = soup.get_text()
-    found = []
-    for show in TARGET_SHOWS:
-        if show.lower() in page_text.lower():
-            found.append(show)
-    return found
+def check_podol():
+    try:
+        r = requests.get(URLS["podol"])
+        soup = BeautifulSoup(r.text, "html.parser")
+        shows = soup.find_all("div", class_="afisha-item__title")
+        found = []
+        for show in shows:
+            title = show.text.strip()
+            if SHOWS_TO_MONITOR[-1].lower() in title.lower():
+                found.append(title)
+        return found
+    except Exception as e:
+        print(f"Error checking Podol theatre: {e}")
+        return []
 
 def main():
-    found_franko = check_franko()
-    found_podil = check_podil()
-    message = ""
-    if found_franko:
-        message += f"🎭 Театр Франка: {', '.join(found_franko)}\n"
-    if found_podil:
-        message += f"🎭 Театр на Подолі: {', '.join(found_podil)}\n"
-    if message:
-        send_telegram("Знайдено квитки:\n" + message)
+    franko_found = check_franko()
+    podol_found = check_podol()
+    messages = []
+    if franko_found:
+        messages.append("🎭 <b>Вистави у театрі імені Франка:</b>\n" + "\n".join(franko_found))
+    if podol_found:
+        messages.append("🎭 <b>Вистави у театрі на Подолі:</b>\n" + "\n".join(podol_found))
+    if messages:
+        send_telegram_message("\n\n".join(messages))
+    else:
+        print("Нічого не знайдено на сайтах")
 
 if __name__ == "__main__":
     main()
